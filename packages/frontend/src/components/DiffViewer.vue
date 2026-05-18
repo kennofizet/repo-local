@@ -36,22 +36,35 @@ export default {
 .diff-viewer {
   margin: 0;
   padding: 0;
-  overflow: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
+  overflow: visible;
+  font-family: var(--rl-font-mono, ui-monospace, Consolas, monospace);
+  font-size: 11px;
   line-height: 20px;
-  background: var(--rl-bg-subtle);
-  border: 1px solid var(--rl-border);
-  border-radius: 6px;
+  background: #0a0f14;
+  border: 1px solid var(--rl-border, rgba(148, 163, 184, 0.12));
+  border-radius: 8px;
 }
 .diff-line {
   display: block;
   padding: 0 12px;
   white-space: pre;
 }
-.diff-line.add { background: rgba(63, 185, 80, 0.15); color: var(--rl-green); }
-.diff-line.del { background: rgba(248, 81, 73, 0.15); color: var(--rl-red); }
-.diff-line.hunk { color: var(--rl-accent); background: rgba(68, 147, 248, 0.08); }
-.diff-line.meta { color: var(--rl-muted); }
-.diff-line.ctx { color: var(--rl-text); }
+.diff-line.add {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--rl-green, #34d399);
+}
+.diff-line.del {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--rl-red, #f87171);
+}
+.diff-line.hunk {
+  color: var(--rl-accent, #38bdf8);
+  background: rgba(56, 189, 248, 0.08);
+}
+.diff-line.meta {
+  color: var(--rl-muted, #7d8da6);
+}
+.diff-line.ctx {
+  color: var(--rl-text, #e8eef6);
+}
 </style>

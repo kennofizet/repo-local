@@ -2,45 +2,60 @@
   <div class="repo-local" :class="{ loading: bootLoading }">
     <header class="rl-header">
       <div class="rl-brand">
-        <span class="rl-logo">◆</span>
-        <strong>Repo Local</strong>
-        <span v-if="workspace" class="rl-root">{{ workspace.root_name }}</span>
+        <span class="rl-logo" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="rl-brand-text">
+          <strong>Repo Local</strong>
+          <span v-if="workspace" class="rl-root">{{ workspace.root_name }}</span>
+        </div>
       </div>
       <div v-if="activeProject" class="rl-project-head">
         <span class="rl-repo-name">{{ activeProject.name }}</span>
-        <span v-if="activeProject.branch" class="rl-branch">⎇ {{ activeProject.branch }}</span>
-        <span v-if="!activeProject?.is_git" class="rl-badge">no git</span>
+        <span v-if="activeProject.branch" class="rl-branch">
+          <span class="dot" />{{ activeProject.branch }}
+        </span>
+        <span v-if="!activeProject?.is_git" class="rl-badge">local only</span>
       </div>
     </header>
 
     <div class="rl-body">
       <aside class="rl-sidebar">
-        <div class="rl-sidebar-title">Projects</div>
-        <div v-if="bootError" class="rl-error">{{ bootError }}</div>
-        <ul class="rl-project-list">
-          <li
-            v-for="p in projects"
-            :key="p.id"
-            :class="{ active: p.id === activeProjectId }"
-          >
-            <button type="button" @click="selectProject(p)">
-              <span class="name">{{ p.name }}</span>
-              <span class="path">{{ p.path || '.' }}</span>
-              <span v-if="p.branch" class="branch">{{ p.branch }}</span>
-            </button>
-          </li>
-        </ul>
+        <div class="rl-panel-head">
+          <span>Workspace</span>
+          <span class="count">{{ projects.length }}</span>
+        </div>
+        <div class="rl-scroll">
+          <div v-if="bootError" class="rl-error">{{ bootError }}</div>
+          <ul class="rl-project-list">
+            <li
+              v-for="p in projects"
+              :key="p.id"
+              :class="{ active: p.id === activeProjectId }"
+            >
+              <button type="button" @click="selectProject(p)">
+                <span class="name">{{ p.name }}</span>
+                <span class="path">{{ p.path || '.' }}</span>
+                <span v-if="p.branch" class="branch">{{ p.branch }}</span>
+              </button>
+            </li>
+          </ul>
+        </div>
       </aside>
 
-      <section v-if="!activeProjectId" class="rl-empty">
-        <p>Select a project from the workspace root to browse files and git history.</p>
+      <section v-if="!activeProjectId" class="rl-center-empty">
+        <div class="empty-card">
+          <p>Select a project to browse files, history, and local changes.</p>
+        </div>
       </section>
 
-      <div v-else-if="activeProjectId && !activeProject" class="rl-empty">
-        <p>Loading project…</p>
+      <div v-else-if="activeProjectId && !activeProject" class="rl-center-empty">
+        <div class="empty-card"><p>Loading project…</p></div>
       </div>
 
-      <div v-else-if="activeProject" class="rl-project-pane">
+      <div v-else-if="activeProject" class="rl-workspace">
         <nav class="rl-tabs">
           <button
             v-for="t in tabs"
@@ -49,60 +64,56 @@
             :class="{ active: tab === t.id }"
             @click="setTab(t.id)"
           >
+            <span class="tab-icon" v-html="t.icon" />
             {{ t.label }}
-            <span v-if="t.id === 'changes' && changeCount" class="count">{{ changeCount }}</span>
+            <span v-if="t.id === 'changes' && changeCount" class="tab-count">{{ changeCount }}</span>
           </button>
         </nav>
 
-        <div class="rl-main">
+        <div class="rl-workspace-body">
           <!-- CODE -->
           <div v-if="tab === 'code'" class="rl-code-layout">
-            <aside class="rl-tree">
-              <div class="rl-breadcrumb">
-                <button type="button" @click="loadTree('')">/</button>
-                <template v-for="(seg, i) in pathSegments" :key="i">
-                  <span>/</span>
-                  <button type="button" @click="loadTree(pathSegments.slice(0, i + 1).join('/'))">{{ seg }}</button>
-                </template>
+            <aside class="rl-tree-panel">
+              <div class="rl-panel-head compact">
+                <span>Explorer</span>
               </div>
-              <div v-if="treeLoading" class="rl-muted">Loading tree…</div>
-              <ul v-else class="rl-tree-list">
-                <li v-for="entry in treeEntries" :key="entry.path">
-                  <button
-                    type="button"
-                    :class="{ dir: entry.type === 'dir', file: entry.type === 'file' }"
-                    @click="onTreeClick(entry)"
-                  >
-                    <span class="icon">{{ entry.type === 'dir' ? '📁' : '📄' }}</span>
-                    <span class="label">{{ entry.name }}</span>
-                    <span v-if="entry.git_status" class="status" :data-s="entry.git_status">{{ entry.git_status }}</span>
-                  </button>
-                </li>
-              </ul>
+              <div class="rl-scroll">
+                <FileTree
+                  ref="fileTreeRef"
+                  :project-id="activeProjectId"
+                  :selected-path="selectedFile"
+                  @select-file="openFile"
+                />
+              </div>
             </aside>
-            <article class="rl-file-pane">
-              <div v-if="!selectedFile" class="rl-placeholder">
-                Choose a file to view its contents.
+            <article class="rl-preview-panel">
+              <div v-if="!selectedFile" class="rl-center-empty inner">
+                <div class="empty-card small">
+                  <p>Select a file from the tree</p>
+                </div>
               </div>
               <template v-else>
-                <div class="rl-file-meta">
-                  <code>{{ selectedFile }}</code>
-                  <span v-if="fileMeta.size != null">{{ formatBytes(fileMeta.size) }}</span>
+                <div class="rl-preview-head">
+                  <code class="path">{{ selectedFile }}</code>
+                  <span v-if="fileMeta.size != null" class="meta">{{ formatBytes(fileMeta.size) }}</span>
                 </div>
-                <div v-if="fileLoading" class="rl-muted">Loading file…</div>
-                <div v-else-if="fileMeta.binary" class="rl-placeholder">{{ fileMeta.message }}</div>
-                <pre v-else class="rl-code"><code>{{ fileContent }}</code></pre>
+                <div class="rl-scroll preview-scroll">
+                  <div v-if="fileLoading" class="rl-muted">Loading…</div>
+                  <div v-else-if="fileMeta.binary" class="rl-placeholder">{{ fileMeta.message }}</div>
+                  <pre v-else class="rl-code"><code>{{ fileContent }}</code></pre>
+                </div>
               </template>
             </article>
           </div>
 
           <!-- COMMITS -->
-          <div v-else-if="tab === 'commits'" class="rl-tab-panel">
-            <div class="rl-split">
-              <div class="rl-list-pane">
+          <div v-else-if="tab === 'commits'" class="rl-split-layout">
+            <aside class="rl-list-panel">
+              <div class="rl-panel-head compact"><span>History</span></div>
+              <div class="rl-scroll">
                 <div v-if="!activeProject?.is_git" class="rl-placeholder">Not a git repository.</div>
-                <div v-else-if="commitsLoading" class="rl-muted">Loading commits…</div>
-                <div v-else-if="commitError" class="rl-error">{{ commitError }}</div>
+                <div v-else-if="commitsLoading" class="rl-muted">Loading…</div>
+                <div v-else-if="commitError && !commits.length" class="rl-error">{{ commitError }}</div>
                 <div v-else-if="commits.length === 0" class="rl-placeholder">No commits yet.</div>
                 <ul v-else class="rl-commit-list">
                   <li
@@ -118,36 +129,59 @@
                   </li>
                 </ul>
               </div>
-              <div class="rl-detail-pane">
-                <div v-if="!selectedCommit" class="rl-placeholder">Select a commit to see changed files and diff.</div>
-                <template v-else>
-                  <h3>{{ selectedCommit.message }}</h3>
-                  <p class="rl-muted">{{ selectedCommit.author }} · {{ formatDate(selectedCommit.date) }}</p>
-                  <ul class="rl-changed-files">
-                    <li v-for="f in commitFiles" :key="f.path">
-                      <button type="button" @click="viewCommitFile(f)">
-                        <span class="st">{{ f.status }}</span> {{ f.path }}
-                      </button>
-                    </li>
-                  </ul>
-                  <div v-if="commitError" class="rl-error">{{ commitError }}</div>
-                  <DiffViewer v-else-if="commitPatch" :patch="commitPatch" />
-                </template>
+            </aside>
+            <div class="rl-detail-panel">
+              <div v-if="!selectedCommit" class="rl-center-empty inner">
+                <div class="empty-card small"><p>Pick a commit</p></div>
               </div>
+              <template v-else>
+                <div class="rl-detail-head">
+                  <h3>{{ selectedCommit.message }}</h3>
+                  <p class="sub">{{ selectedCommit.author }} · {{ formatDate(selectedCommit.date) }}</p>
+                </div>
+                <div class="rl-detail-split">
+                  <div class="rl-sublist">
+                    <div class="rl-panel-head compact"><span>Files</span></div>
+                    <div class="rl-scroll">
+                      <ul class="rl-mini-list">
+                        <li
+                          v-for="f in commitFiles"
+                          :key="f.path"
+                          :class="{ active: activeCommitFile === f.path }"
+                        >
+                          <button type="button" @click="viewCommitFile(f)">
+                            <span class="st">{{ f.status }}</span>
+                            <span class="path">{{ f.path }}</span>
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div class="rl-diff-wrap">
+                    <div v-if="commitError" class="rl-error">{{ commitError }}</div>
+                    <div class="rl-scroll">
+                      <DiffViewer v-if="commitPatch" :patch="commitPatch" />
+                    </div>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
 
           <!-- CHANGES -->
-          <div v-else-if="tab === 'changes'" class="rl-tab-panel">
-            <div class="rl-split">
-              <div class="rl-list-pane">
-                <div v-if="!activeProject?.is_git" class="rl-placeholder">Not a git repository.</div>
-                <div v-else-if="changesLoading" class="rl-muted">Loading changes…</div>
-                <div v-else class="rl-changes-toolbar">
-                  <button type="button" :class="{ active: diffMode === 'unstaged' }" @click="diffMode = 'unstaged'">Unstaged</button>
+          <div v-else-if="tab === 'changes'" class="rl-split-layout">
+            <aside class="rl-list-panel">
+              <div class="rl-panel-head compact">
+                <span>Changes</span>
+                <div class="seg">
+                  <button type="button" :class="{ active: diffMode === 'unstaged' }" @click="diffMode = 'unstaged'">Work</button>
                   <button type="button" :class="{ active: diffMode === 'staged' }" @click="diffMode = 'staged'">Staged</button>
                 </div>
-                <ul v-if="activeProject?.is_git" class="rl-changed-files">
+              </div>
+              <div class="rl-scroll">
+                <div v-if="!activeProject?.is_git" class="rl-placeholder">Not a git repository.</div>
+                <div v-else-if="changesLoading" class="rl-muted">Loading…</div>
+                <ul v-else class="rl-mini-list">
                   <li
                     v-for="f in changeFiles"
                     :key="f.path"
@@ -155,18 +189,24 @@
                   >
                     <button type="button" @click="viewChangeFile(f)">
                       <span class="st">{{ f.worktree_status || f.index_status }}</span>
-                      {{ f.path }}
+                      <span class="path">{{ f.path }}</span>
                     </button>
                   </li>
                 </ul>
               </div>
-              <div class="rl-detail-pane">
-                <div v-if="!selectedChangePath" class="rl-placeholder">Select a changed file to view diff.</div>
-                <template v-else>
-                  <h3><code>{{ selectedChangePath }}</code></h3>
-                  <DiffViewer v-if="changePatch" :patch="changePatch" />
-                </template>
+            </aside>
+            <div class="rl-detail-panel">
+              <div v-if="!selectedChangePath" class="rl-center-empty inner">
+                <div class="empty-card small"><p>Select a changed file</p></div>
               </div>
+              <template v-else>
+                <div class="rl-preview-head">
+                  <code class="path">{{ selectedChangePath }}</code>
+                </div>
+                <div class="rl-scroll">
+                  <DiffViewer v-if="changePatch" :patch="changePatch" />
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -176,18 +216,26 @@
 </template>
 
 <script>
-import { computed, inject, onMounted, ref, watch } from 'vue'
+import { inject, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DiffViewer from './DiffViewer.vue'
+import FileTree from './FileTree.vue'
 import { formatBytes, formatDate } from '../utils/format.js'
+
+const TAB_ICONS = {
+  code: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 3.5 2 8l3.5 4.5M10.5 12.5 14 8l-3.5-4.5"/></svg>',
+  commits: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2"/><path d="M8 2v2M8 12v2M2 8h2M12 8h2" stroke="currentColor" stroke-width="1.2"/></svg>',
+  changes: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3 8h10M8 3v10" stroke="currentColor" stroke-width="1.5"/></svg>',
+}
 
 export default {
   name: 'RepoLocalApp',
-  components: { DiffViewer },
+  components: { DiffViewer, FileTree },
   setup() {
     const api = inject('repoLocalApi')
     const route = useRoute()
     const router = useRouter()
+    const fileTreeRef = ref(null)
 
     const bootLoading = ref(true)
     const bootError = ref('')
@@ -197,10 +245,6 @@ export default {
     const activeProjectId = ref('')
     const activeProject = ref(null)
     const tab = ref('code')
-
-    const treePath = ref('')
-    const treeEntries = ref([])
-    const treeLoading = ref(false)
 
     const selectedFile = ref('')
     const fileContent = ref('')
@@ -213,6 +257,7 @@ export default {
     const commitFiles = ref([])
     const commitPatch = ref('')
     const commitError = ref('')
+    const activeCommitFile = ref('')
 
     const changeFiles = ref([])
     const changeCount = ref(0)
@@ -222,12 +267,10 @@ export default {
     const diffMode = ref('unstaged')
 
     const tabs = [
-      { id: 'code', label: 'Code' },
-      { id: 'commits', label: 'History' },
-      { id: 'changes', label: 'Changes' },
+      { id: 'code', label: 'Code', icon: TAB_ICONS.code },
+      { id: 'commits', label: 'History', icon: TAB_ICONS.commits },
+      { id: 'changes', label: 'Changes', icon: TAB_ICONS.changes },
     ]
-
-    const pathSegments = computed(() => (treePath.value ? treePath.value.split('/') : []))
 
     async function loadWorkspace() {
       bootLoading.value = true
@@ -249,6 +292,7 @@ export default {
       commitFiles.value = []
       commitPatch.value = ''
       commitError.value = ''
+      activeCommitFile.value = ''
       changeFiles.value = []
       selectedChangePath.value = ''
       changePatch.value = ''
@@ -259,15 +303,13 @@ export default {
       activeProjectId.value = p.id
       activeProject.value = p
       resetGitState()
+      selectedFile.value = ''
       router.replace({ path: `/p/${encodeURIComponent(p.id)}/${tab.value}` })
       try {
         activeProject.value = await api.getProject(p.id)
       } catch {
         activeProject.value = p
       }
-      selectedFile.value = ''
-      treePath.value = ''
-      await loadTree('')
       if (tab.value === 'commits') loadCommits()
       if (tab.value === 'changes') loadChanges()
     }
@@ -279,29 +321,6 @@ export default {
       }
       if (id === 'commits') loadCommits()
       if (id === 'changes') loadChanges()
-    }
-
-    async function loadTree(path) {
-      if (!activeProjectId.value) return
-      treeLoading.value = true
-      treePath.value = path
-      try {
-        const data = await api.getTree(activeProjectId.value, path)
-        treeEntries.value = data.entries || []
-      } catch (e) {
-        treeEntries.value = []
-      } finally {
-        treeLoading.value = false
-      }
-    }
-
-    function onTreeClick(entry) {
-      if (entry.type === 'dir') {
-        loadTree(entry.path)
-        selectedFile.value = ''
-        return
-      }
-      openFile(entry.path)
     }
 
     async function openFile(path) {
@@ -327,6 +346,7 @@ export default {
       commitFiles.value = []
       commitPatch.value = ''
       commitError.value = ''
+      activeCommitFile.value = ''
       try {
         const data = await api.getCommits(projectId)
         if (projectId !== activeProjectId.value) return
@@ -337,9 +357,7 @@ export default {
           commitError.value = e.message || 'Failed to load commits'
         }
       } finally {
-        if (projectId === activeProjectId.value) {
-          commitsLoading.value = false
-        }
+        if (projectId === activeProjectId.value) commitsLoading.value = false
       }
     }
 
@@ -347,6 +365,7 @@ export default {
       selectedCommit.value = c
       commitPatch.value = ''
       commitError.value = ''
+      activeCommitFile.value = ''
       try {
         const detail = await api.getCommit(activeProjectId.value, c.sha)
         commitFiles.value = detail.files || []
@@ -360,6 +379,7 @@ export default {
     }
 
     async function viewCommitFile(f) {
+      activeCommitFile.value = f.path
       try {
         const diff = await api.getDiff(activeProjectId.value, {
           mode: 'commit',
@@ -367,8 +387,10 @@ export default {
           path: f.path,
         })
         commitPatch.value = diff.patch || ''
+        commitError.value = ''
       } catch (e) {
-        commitPatch.value = e.message
+        commitPatch.value = ''
+        commitError.value = e.message
       }
     }
 
@@ -436,10 +458,7 @@ export default {
       activeProject,
       tab,
       tabs,
-      treePath,
-      treeEntries,
-      treeLoading,
-      pathSegments,
+      fileTreeRef,
       selectedFile,
       fileContent,
       fileMeta,
@@ -450,6 +469,7 @@ export default {
       commitFiles,
       commitPatch,
       commitError,
+      activeCommitFile,
       changeFiles,
       changeCount,
       changesLoading,
@@ -458,8 +478,7 @@ export default {
       diffMode,
       selectProject,
       setTab,
-      loadTree,
-      onTreeClick,
+      openFile,
       selectCommit,
       viewCommitFile,
       viewChangeFile,
@@ -472,203 +491,543 @@ export default {
 
 <style scoped>
 .repo-local {
-  --rl-bg: #0d1117;
-  --rl-bg-subtle: #161b22;
-  --rl-border: #30363d;
-  --rl-text: #e6edf3;
-  --rl-muted: #8b949e;
-  --rl-accent: #4493f8;
-  --rl-green: #3fb950;
-  --rl-red: #f85149;
-  min-height: 100vh;
+  --rl-bg: #070b10;
+  --rl-bg-elevated: #0d1219;
+  --rl-surface: #121a24;
+  --rl-surface-2: #182230;
+  --rl-border: rgba(148, 163, 184, 0.12);
+  --rl-border-strong: rgba(148, 163, 184, 0.22);
+  --rl-text: #e8eef6;
+  --rl-muted: #7d8da6;
+  --rl-accent: #38bdf8;
+  --rl-accent-2: #818cf8;
+  --rl-accent-dim: rgba(56, 189, 248, 0.12);
+  --rl-hover: rgba(148, 163, 184, 0.08);
+  --rl-green: #34d399;
+  --rl-red: #f87171;
+  --rl-font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --rl-header-h: 52px;
+  --rl-tabs-h: 44px;
+
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: var(--rl-bg);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56, 189, 248, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(129, 140, 248, 0.06), transparent);
   color: var(--rl-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-  font-size: 14px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
 }
+
 .rl-header {
+  flex-shrink: 0;
+  height: var(--rl-header-h);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
-  padding: 12px 20px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--rl-border);
-  background: var(--rl-bg-subtle);
+  background: rgba(13, 18, 25, 0.85);
+  backdrop-filter: blur(12px);
 }
-.rl-brand { display: flex; align-items: center; gap: 8px; }
-.rl-logo { color: var(--rl-accent); }
-.rl-root { color: var(--rl-muted); font-size: 12px; }
-.rl-project-head { display: flex; align-items: center; gap: 8px; }
-.rl-repo-name { font-weight: 600; }
-.rl-branch, .rl-badge {
-  font-size: 12px;
-  padding: 2px 8px;
+.rl-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rl-logo {
+  color: var(--rl-accent);
+  display: flex;
+}
+.rl-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.2;
+}
+.rl-brand-text strong {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.rl-root {
+  font-size: 11px;
+  color: var(--rl-muted);
+}
+.rl-project-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.rl-repo-name {
+  font-weight: 600;
+  font-size: 13px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rl-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--rl-font-mono);
+  padding: 3px 10px;
   border-radius: 999px;
-  border: 1px solid var(--rl-border);
-  color: var(--rl-muted);
+  border: 1px solid var(--rl-border-strong);
+  color: var(--rl-accent);
+  background: var(--rl-accent-dim);
 }
-.rl-body { display: flex; flex: 1; min-height: calc(100vh - 49px); }
-.rl-project-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.rl-sidebar {
-  width: 260px;
-  border-right: 1px solid var(--rl-border);
-  background: var(--rl-bg-subtle);
-  flex-shrink: 0;
+.rl-branch .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rl-green);
+  box-shadow: 0 0 8px var(--rl-green);
 }
-.rl-sidebar-title {
-  padding: 12px 16px;
-  font-size: 12px;
+.rl-badge {
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  color: var(--rl-muted);
+  padding: 3px 8px;
+  border: 1px solid var(--rl-border);
+  border-radius: 4px;
+}
+
+.rl-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.rl-sidebar {
+  width: 248px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--rl-border);
+  background: var(--rl-bg-elevated);
+}
+
+.rl-workspace {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rl-tabs {
+  flex-shrink: 0;
+  height: var(--rl-tabs-h);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--rl-border);
+  background: var(--rl-surface);
+}
+.rl-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rl-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.rl-tabs button:hover {
+  color: var(--rl-text);
+  background: var(--rl-hover);
+}
+.rl-tabs button.active {
+  color: var(--rl-text);
+  border-color: var(--rl-border-strong);
+  background: var(--rl-surface-2);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.15);
+}
+.tab-icon {
+  display: flex;
+  opacity: 0.85;
+}
+.tab-count {
+  font-size: 10px;
+  min-width: 18px;
+  text-align: center;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--rl-accent);
+  color: #041018;
+  font-weight: 700;
+}
+
+.rl-workspace-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.rl-panel-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--rl-muted);
+  border-bottom: 1px solid var(--rl-border);
+}
+.rl-panel-head.compact {
+  padding: 8px 12px;
+}
+.rl-panel-head .count {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--rl-surface-2);
   color: var(--rl-muted);
 }
-.rl-project-list { list-style: none; margin: 0; padding: 0 8px 16px; }
-.rl-project-list li { margin-bottom: 4px; }
+
+.rl-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.rl-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.rl-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 4px;
+}
+.rl-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rl-project-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8px 12px;
+}
+.rl-project-list li {
+  margin-bottom: 2px;
+}
 .rl-project-list button {
   width: 100%;
   text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--rl-text);
   padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rl-text);
   cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
 }
 .rl-project-list li.active button,
 .rl-project-list button:hover {
-  background: rgba(68, 147, 248, 0.12);
-  border-color: var(--rl-border);
+  background: var(--rl-accent-dim);
+  border-color: rgba(56, 189, 248, 0.25);
 }
-.rl-project-list .path { display: block; font-size: 11px; color: var(--rl-muted); }
-.rl-project-list .branch { font-size: 11px; color: var(--rl-green); }
-.rl-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--rl-border);
-  background: var(--rl-bg-subtle);
-}
-.rl-tabs button {
-  background: transparent;
-  border: none;
-  color: var(--rl-muted);
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.rl-tabs button.active { color: var(--rl-text); background: rgba(255,255,255,0.06); }
-.rl-tabs .count {
-  margin-left: 6px;
-  background: var(--rl-accent);
-  color: #fff;
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 999px;
-}
-.rl-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.rl-code-layout { display: flex; flex: 1; min-height: 0; }
-.rl-tab-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; }
-.rl-tab-panel .rl-split { flex: 1; }
-.rl-tree {
-  width: 280px;
-  border-right: 1px solid var(--rl-border);
-  overflow: auto;
-  flex-shrink: 0;
-}
-.rl-breadcrumb {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--rl-border);
-  font-size: 12px;
-  word-break: break-all;
-}
-.rl-breadcrumb button {
-  background: none;
-  border: none;
-  color: var(--rl-accent);
-  cursor: pointer;
-  padding: 0;
-}
-.rl-tree-list { list-style: none; margin: 0; padding: 4px 0; }
-.rl-tree-list button {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  background: none;
-  border: none;
-  color: var(--rl-text);
-  text-align: left;
-  cursor: pointer;
+.rl-project-list .name {
+  display: block;
+  font-weight: 500;
   font-size: 13px;
 }
-.rl-tree-list button:hover { background: rgba(255,255,255,0.04); }
-.rl-tree-list .status { margin-left: auto; font-size: 11px; color: var(--rl-green); }
-.rl-file-pane { flex: 1; overflow: auto; padding: 0; }
-.rl-file-meta {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--rl-border);
-  font-size: 12px;
+.rl-project-list .path {
+  display: block;
+  font-size: 10px;
+  font-family: var(--rl-font-mono);
   color: var(--rl-muted);
+  margin-top: 2px;
+}
+.rl-project-list .branch {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--rl-green);
+}
+
+.rl-center-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 24px;
+}
+.rl-center-empty.inner {
+  height: 100%;
+}
+.empty-card {
+  padding: 24px 32px;
+  border-radius: 12px;
+  border: 1px dashed var(--rl-border-strong);
+  background: var(--rl-surface);
+  color: var(--rl-muted);
+  text-align: center;
+  max-width: 320px;
+}
+.empty-card.small {
+  padding: 16px 24px;
+  font-size: 12px;
+}
+
+.rl-code-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.rl-tree-panel {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--rl-border);
+  background: var(--rl-bg-elevated);
+}
+.rl-preview-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--rl-surface);
+}
+.rl-preview-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rl-border);
+  background: var(--rl-surface-2);
+}
+.rl-preview-head .path {
+  font-family: var(--rl-font-mono);
+  font-size: 12px;
+  color: var(--rl-accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rl-preview-head .meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--rl-muted);
+}
+.preview-scroll {
+  background: #0a0f14;
 }
 .rl-code {
   margin: 0;
   padding: 16px;
+  font-family: var(--rl-font-mono);
   font-size: 12px;
-  line-height: 1.5;
-  overflow: auto;
+  line-height: 1.55;
+  color: #c9d7e8;
+  tab-size: 2;
 }
-.rl-split { display: flex; flex: 1; min-height: 0; }
-.rl-list-pane {
-  width: 340px;
+
+.rl-split-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.rl-list-panel {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--rl-border);
-  overflow: auto;
+  background: var(--rl-bg-elevated);
 }
-.rl-detail-pane { flex: 1; overflow: auto; padding: 16px; }
-.rl-commit-list { list-style: none; margin: 0; padding: 0; }
+.rl-detail-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--rl-surface);
+}
+.rl-detail-head {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rl-border);
+}
+.rl-detail-head h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.rl-detail-head .sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--rl-muted);
+}
+.rl-detail-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.rl-sublist {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--rl-border);
+}
+.rl-diff-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rl-diff-wrap .rl-scroll {
+  padding: 12px;
+}
+
+.rl-commit-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
 .rl-commit-list button {
   width: 100%;
   text-align: left;
-  padding: 12px 16px;
-  background: none;
-  border: none;
-  border-bottom: 1px solid var(--rl-border);
+  padding: 10px 12px;
+  margin: 0 6px;
+  width: calc(100% - 12px);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
   color: var(--rl-text);
   cursor: pointer;
 }
-.rl-commit-list li.active button { background: rgba(68, 147, 248, 0.1); }
-.rl-commit-list .sha { font-family: monospace; color: var(--rl-accent); margin-right: 8px; }
-.rl-commit-list .msg { display: block; margin-top: 4px; }
-.rl-commit-list .meta { display: block; font-size: 12px; color: var(--rl-muted); margin-top: 4px; }
-.rl-changed-files { list-style: none; margin: 0; padding: 0; }
-.rl-changed-files button {
-  width: 100%;
-  text-align: left;
-  padding: 8px 16px;
-  background: none;
-  border: none;
-  border-bottom: 1px solid var(--rl-border);
-  color: var(--rl-text);
-  cursor: pointer;
-  font-family: monospace;
+.rl-commit-list li.active button,
+.rl-commit-list button:hover {
+  background: var(--rl-accent-dim);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+.rl-commit-list .sha {
+  font-family: var(--rl-font-mono);
+  font-size: 11px;
+  color: var(--rl-accent);
+  font-weight: 600;
+}
+.rl-commit-list .msg {
+  display: block;
+  margin-top: 4px;
   font-size: 12px;
+  line-height: 1.35;
 }
-.rl-changed-files li.active button { background: rgba(68, 147, 248, 0.1); }
-.rl-changed-files .st { color: var(--rl-green); margin-right: 8px; }
-.rl-changes-toolbar { padding: 8px; display: flex; gap: 8px; }
-.rl-changes-toolbar button {
-  flex: 1;
-  padding: 6px;
+.rl-commit-list .meta {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--rl-muted);
+}
+
+.rl-mini-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.rl-mini-list button {
+  width: calc(100% - 12px);
+  margin: 0 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid transparent;
   border-radius: 6px;
-  border: 1px solid var(--rl-border);
+  background: transparent;
+  color: var(--rl-text);
+  cursor: pointer;
+  font-size: 11px;
+}
+.rl-mini-list li.active button,
+.rl-mini-list button:hover {
+  background: var(--rl-hover);
+  border-color: var(--rl-border);
+}
+.rl-mini-list .st {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--rl-green);
+  font-family: var(--rl-font-mono);
+}
+.rl-mini-list .path {
+  font-family: var(--rl-font-mono);
+  word-break: break-all;
+  line-height: 1.35;
+  color: var(--rl-muted);
+}
+.rl-mini-list li.active .path {
+  color: var(--rl-text);
+}
+
+.seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--rl-surface-2);
+}
+.seg button {
+  padding: 3px 8px;
+  font-size: 10px;
+  border: none;
+  border-radius: 4px;
   background: transparent;
   color: var(--rl-muted);
   cursor: pointer;
 }
-.rl-changes-toolbar button.active { color: var(--rl-text); border-color: var(--rl-accent); }
-.rl-empty, .rl-placeholder { padding: 48px 24px; color: var(--rl-muted); text-align: center; }
-.rl-error { padding: 12px; color: var(--rl-red); font-size: 12px; }
-.rl-muted { padding: 12px; color: var(--rl-muted); }
-section.rl-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
+.seg button.active {
+  background: var(--rl-accent-dim);
+  color: var(--rl-accent);
+}
+
+.rl-placeholder,
+.rl-muted {
+  padding: 16px;
+  color: var(--rl-muted);
+  font-size: 12px;
+}
+.rl-error {
+  padding: 12px;
+  margin: 8px;
+  font-size: 12px;
+  color: var(--rl-red);
+  background: rgba(248, 113, 113, 0.1);
+  border-radius: 6px;
+}
 </style>
