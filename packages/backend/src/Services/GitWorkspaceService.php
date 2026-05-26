@@ -25,7 +25,7 @@ final class GitWorkspaceService
     }
 
     /**
-     * @return list<array{id: string, name: string, path: string, branch: ?string, is_git: bool}>
+     * @return list<array{id: string, name: string, path: string, branch: ?string, is_git: bool, has_changes: ?bool}>
      */
     public function discoverProjects(string $workspaceRoot, int $maxDepth = 4): array
     {
@@ -223,16 +223,17 @@ final class GitWorkspaceService
     {
         $repoPath = $this->requireGit($workspaceRoot, $projectPath);
         $branch = $this->currentBranch($repoPath);
-        $porcelain = trim($this->git->run($repoPath, ['status', '--porcelain', '-u']));
+        $porcelain = rtrim($this->git->run($repoPath, ['status', '--porcelain', '-u']), "\r\n");
         $files = [];
 
-        foreach (array_filter(explode("\n", $porcelain)) as $line) {
+        foreach (array_filter(explode("\n", $porcelain), static fn (string $l) => $l !== '') as $line) {
+            $line = rtrim($line, "\r");
             if (strlen($line) < 4) {
                 continue;
             }
             $indexStatus = $line[0];
             $worktreeStatus = $line[1];
-            $path = trim(substr($line, 3));
+            $path = substr($line, 3);
             if (str_contains($path, ' -> ')) {
                 $path = trim(substr($path, strrpos($path, ' -> ') + 4));
             }
@@ -335,8 +336,18 @@ final class GitWorkspaceService
         return $branch !== null ? trim($branch) : null;
     }
 
+    private function hasWorkingChanges(string $repoPath): ?bool
+    {
+        $output = $this->git->tryRun($repoPath, ['status', '--porcelain', '-u']);
+        if ($output === null) {
+            return null;
+        }
+
+        return trim($output) !== '';
+    }
+
     /**
-     * @param array<string, array{id: string, name: string, path: string, branch: ?string, is_git: bool}> $found
+     * @param array<string, array{id: string, name: string, path: string, branch: ?string, is_git: bool, has_changes: ?bool}> $found
      */
     private function walkForGitRepos(
         string $workspaceRoot,
@@ -355,6 +366,7 @@ final class GitWorkspaceService
                     'path' => str_replace('\\', '/', $relative),
                     'branch' => $this->currentBranch($currentDir),
                     'is_git' => true,
+                    'has_changes' => $this->hasWorkingChanges($currentDir),
                 ];
             }
 
@@ -394,6 +406,7 @@ final class GitWorkspaceService
                         'path' => $key,
                         'branch' => null,
                         'is_git' => false,
+                        'has_changes' => null,
                     ];
                 }
             }
@@ -406,14 +419,15 @@ final class GitWorkspaceService
     private function statusMap(string $repoPath): array
     {
         $map = [];
-        $porcelain = trim($this->git->tryRun($repoPath, ['status', '--porcelain', '-u']) ?? '');
-        foreach (array_filter(explode("\n", $porcelain)) as $line) {
+        $porcelain = rtrim($this->git->tryRun($repoPath, ['status', '--porcelain', '-u']) ?? '', "\r\n");
+        foreach (array_filter(explode("\n", $porcelain), static fn (string $l) => $l !== '') as $line) {
+            $line = rtrim($line, "\r");
             if (strlen($line) < 4) {
                 continue;
             }
             $indexStatus = $line[0];
             $worktreeStatus = $line[1];
-            $path = trim(substr($line, 3));
+            $path = substr($line, 3);
             if (str_contains($path, ' -> ')) {
                 $path = trim(substr($path, strrpos($path, ' -> ') + 4));
             }

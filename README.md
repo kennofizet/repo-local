@@ -13,14 +13,38 @@ Local **GitHub-style** workspace browser for `packages-builder`: project list fr
 
 ## Quick start (demo)
 
-**1. API** (port 8090, workspace = parent of `repo-local` → `packages-builder`):
+**1. API** (port 8090). Default workspace = parent of `repo-local`. To browse a different folder (e.g. `C:\laragon\www`), set `REPO_LOCAL_WORKSPACE_ROOT` in the **same shell** that runs `php -S`.
+
+PowerShell (Windows):
+
+```powershell
+cd repo-local
+composer install
+$env:REPO_LOCAL_WORKSPACE_ROOT = "C:\laragon\www"
+php -S 127.0.0.1:8090 -t public public/index.php
+```
+
+> In PowerShell, `set FOO=BAR` does **not** create an environment variable (it's an alias for `Set-Variable`). Use `$env:FOO = "BAR"` so PHP's `getenv()` can see it.
+
+cmd.exe (Windows):
+
+```bat
+cd repo-local
+composer install
+set REPO_LOCAL_WORKSPACE_ROOT=C:\laragon\www
+php -S 127.0.0.1:8090 -t public public/index.php
+```
+
+bash / zsh (macOS, Linux, Git Bash):
 
 ```bash
 cd repo-local
 composer install
-set REPO_LOCAL_WORKSPACE_ROOT=c:\laragon\www\packages-builder
+export REPO_LOCAL_WORKSPACE_ROOT=/path/to/workspace
 php -S 127.0.0.1:8090 -t public public/index.php
 ```
+
+Verify: open `http://127.0.0.1:8090/api/repo-local/workspace` — the `root` field should match the path you set.
 
 **2. UI** (port 5178, proxies API):
 

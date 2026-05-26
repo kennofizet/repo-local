@@ -25,18 +25,34 @@
       <aside class="rl-sidebar">
         <div class="rl-panel-head">
           <span>Workspace</span>
-          <span class="count">{{ projects.length }}</span>
+          <span class="count">{{ filteredProjects.length }}<span v-if="filteredProjects.length !== projects.length" class="of">/{{ projects.length }}</span></span>
+        </div>
+        <div class="rl-filter-bar seg">
+          <button type="button" :class="{ active: projectFilter === 'all' }" @click="projectFilter = 'all'">All</button>
+          <button type="button" :class="{ active: projectFilter === 'changed' }" @click="projectFilter = 'changed'" :title="`${changedCount} repo${changedCount === 1 ? '' : 's'} with uncommitted changes`">
+            Changed<span v-if="changedCount" class="seg-count">{{ changedCount }}</span>
+          </button>
+          <button type="button" :class="{ active: projectFilter === 'clean' }" @click="projectFilter = 'clean'">Clean</button>
         </div>
         <div class="rl-scroll">
           <div v-if="bootError" class="rl-error">{{ bootError }}</div>
-          <ul class="rl-project-list">
+          <div v-else-if="!filteredProjects.length" class="rl-placeholder small">No repos match this filter.</div>
+          <ul v-else class="rl-project-list">
             <li
-              v-for="p in projects"
+              v-for="p in filteredProjects"
               :key="p.id"
               :class="{ active: p.id === activeProjectId }"
             >
               <button type="button" @click="selectProject(p)">
-                <span class="name">{{ p.name }}</span>
+                <span class="name">
+                  <span
+                    v-if="p.has_changes"
+                    class="rl-change-dot"
+                    title="Has uncommitted changes"
+                    aria-label="Has uncommitted changes"
+                  />
+                  {{ p.name }}
+                </span>
                 <span class="path">{{ p.path || '.' }}</span>
                 <span v-if="p.branch" class="branch">{{ p.branch }}</span>
               </button>
@@ -202,9 +218,16 @@
               <template v-else>
                 <div class="rl-preview-head">
                   <code class="path">{{ selectedChangePath }}</code>
+                  <span
+                    v-if="activeChangeMode"
+                    class="rl-mode-badge"
+                    :class="{ alt: activeChangeMode !== diffMode }"
+                    :title="activeChangeMode !== diffMode ? `No ${diffMode} changes for this file — showing ${activeChangeMode}` : ''"
+                  >{{ activeChangeMode === 'staged' ? 'Staged' : 'Work' }}</span>
                 </div>
                 <div class="rl-scroll">
                   <DiffViewer v-if="changePatch" :patch="changePatch" />
+                  <div v-else class="rl-placeholder">No diff available for this file.</div>
                 </div>
               </template>
             </div>
@@ -216,7 +239,7 @@
 </template>
 
 <script>
-import { inject, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DiffViewer from './DiffViewer.vue'
 import FileTree from './FileTree.vue'
@@ -241,6 +264,17 @@ export default {
     const bootError = ref('')
     const workspace = ref(null)
     const projects = ref([])
+    const projectFilter = ref('all')
+    const changedCount = computed(() => projects.value.filter((p) => p.has_changes === true).length)
+    const filteredProjects = computed(() => {
+      if (projectFilter.value === 'changed') {
+        return projects.value.filter((p) => p.has_changes === true)
+      }
+      if (projectFilter.value === 'clean') {
+        return projects.value.filter((p) => p.is_git && p.has_changes === false)
+      }
+      return projects.value
+    })
 
     const activeProjectId = ref('')
     const activeProject = ref(null)
@@ -406,11 +440,28 @@ export default {
       }
     }
 
+    const activeChangeMode = ref('')
+
+    function resolveChangeMode(f) {
+      const hasUnstaged = !!(f?.unstaged || f?.untracked)
+      const hasStaged = !!f?.staged
+      if (diffMode.value === 'unstaged') {
+        if (hasUnstaged) return 'unstaged'
+        if (hasStaged) return 'staged'
+        return 'unstaged'
+      }
+      if (hasStaged) return 'staged'
+      if (hasUnstaged) return 'unstaged'
+      return 'staged'
+    }
+
     async function viewChangeFile(f) {
       selectedChangePath.value = f.path
+      const mode = resolveChangeMode(f)
+      activeChangeMode.value = mode
       try {
         const diff = await api.getDiff(activeProjectId.value, {
-          mode: diffMode.value,
+          mode,
           path: f.path,
         })
         changePatch.value = diff.patch || ''
@@ -454,6 +505,9 @@ export default {
       bootError,
       workspace,
       projects,
+      projectFilter,
+      filteredProjects,
+      changedCount,
       activeProjectId,
       activeProject,
       tab,
@@ -476,6 +530,7 @@ export default {
       selectedChangePath,
       changePatch,
       diffMode,
+      activeChangeMode,
       selectProject,
       setTab,
       openFile,
@@ -838,6 +893,23 @@ export default {
   font-size: 11px;
   color: var(--rl-muted);
 }
+.rl-mode-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(56, 139, 253, 0.15);
+  color: var(--rl-accent);
+  border: 1px solid rgba(56, 139, 253, 0.35);
+}
+.rl-mode-badge.alt {
+  background: rgba(210, 153, 34, 0.15);
+  color: #e0b341;
+  border-color: rgba(210, 153, 34, 0.35);
+}
 .preview-scroll {
   background: #0a0f14;
 }
@@ -1014,6 +1086,45 @@ export default {
 .seg button.active {
   background: var(--rl-accent-dim);
   color: var(--rl-accent);
+}
+.seg-count {
+  margin-left: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: rgba(210, 153, 34, 0.2);
+  color: #e0b341;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.rl-filter-bar {
+  margin: 6px 10px 8px;
+}
+
+.rl-panel-head .count .of {
+  color: var(--rl-muted);
+  font-weight: 400;
+}
+
+.rl-change-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #e0b341;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.rl-placeholder.small {
+  padding: 10px 14px;
+  font-size: 11px;
 }
 
 .rl-placeholder,
