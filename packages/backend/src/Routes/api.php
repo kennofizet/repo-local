@@ -17,4 +17,5 @@ Route::prefix('api/' . $prefix)
         Route::get('projects/{projectId}/commits/{sha}', [RepoLocalController::class, 'commit']);
         Route::get('projects/{projectId}/changes', [RepoLocalController::class, 'changes']);
         Route::get('projects/{projectId}/diff', [RepoLocalController::class, 'diff']);
+        Route::post('projects/{projectId}/tinker/run', [RepoLocalController::class, 'tinkerRun']);
     });

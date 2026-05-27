@@ -102,8 +102,18 @@ installRepoLocalModule(app, {
 | GET | `/projects/{id}/commits/{sha}` | Commit + changed files |
 | GET | `/projects/{id}/changes` | `git status` porcelain |
 | GET | `/projects/{id}/diff?mode=&path=&sha=` | `unstaged`, `staged`, or `commit` diff |
+| POST | `/projects/{id}/tinker/run` | Run PHP in target Laravel app (body: `code`, optional `user_id`) |
 
 `{id}` is a URL-safe base64 project path relative to the workspace root.
+
+### Tinker zone (Code tab UI)
+
+When viewing a file, select text to open the **Tinker** right panel (or use the **Tinker** button):
+
+- **Query** — PHP executed in the project via an isolated bootstrap (login as default test user when set, then logout).
+- **User case** — resolve-user PHP snippet, name + id fields, and a **test users** list (CRUD in `localStorage`, one default for query runs).
+
+Requires a Laravel project (`artisan` present) under the workspace root.
 
 ## Security
 

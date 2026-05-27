@@ -43,5 +43,13 @@ export function createRepoLocalApi(baseUrl = '/api/repo-local') {
         })
         .then(unwrap)
     },
+    runTinker(projectId, { code, userId = null } = {}) {
+      return client
+        .post(`/projects/${encodeURIComponent(projectId)}/tinker/run`, {
+          code,
+          user_id: userId,
+        })
+        .then(unwrap)
+    },
   }
 }

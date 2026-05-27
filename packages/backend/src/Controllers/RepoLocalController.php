@@ -3,6 +3,7 @@
 namespace Kennofizet\RepoLocal\Controllers;
 
 use Kennofizet\RepoLocal\Services\GitWorkspaceService;
+use Kennofizet\RepoLocal\Services\LaravelTinkerRunner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -12,6 +13,7 @@ class RepoLocalController
 {
     public function __construct(
         private readonly GitWorkspaceService $workspace,
+        private readonly LaravelTinkerRunner $tinker,
     ) {
     }
 
@@ -119,6 +121,26 @@ class RepoLocalController
                 is_string($filePath) ? $filePath : null,
                 is_string($sha) ? $sha : null,
             ));
+        } catch (InvalidArgumentException $e) {
+            return $this->error($e->getMessage(), 404);
+        } catch (RuntimeException $e) {
+            return $this->error($e->getMessage(), 500);
+        }
+    }
+
+    public function tinkerRun(Request $request, string $projectId): JsonResponse
+    {
+        try {
+            $path = $this->workspace->decodeProjectId($projectId);
+            $code = trim((string) $request->input('code', ''));
+            if ($code === '') {
+                return $this->error('Code is required.', 422);
+            }
+
+            $userId = $request->input('user_id');
+            $userId = is_numeric($userId) ? (int) $userId : null;
+
+            return $this->ok($this->tinker->run($this->root(), $path, $code, $userId));
         } catch (InvalidArgumentException $e) {
             return $this->error($e->getMessage(), 404);
         } catch (RuntimeException $e) {

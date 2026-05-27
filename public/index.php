@@ -5,7 +5,7 @@ use Kennofizet\RepoLocal\Services\GitWorkspaceService;
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $workspaceRoot = getenv('REPO_LOCAL_WORKSPACE_ROOT') ?: dirname(__DIR__, 2);
 $scanDepth = (int) (getenv('REPO_LOCAL_SCAN_DEPTH') ?: 4);
 $service = new GitWorkspaceService();
+$tinker = new Kennofizet\RepoLocal\Services\LaravelTinkerRunner();
 
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $uri = rtrim($uri, '/') ?: '/';
@@ -36,7 +37,7 @@ $path = substr($uri, strlen($base)) ?: '/';
 $segments = array_values(array_filter(explode('/', $path)));
 
 try {
-    $payload = route($service, $workspaceRoot, $scanDepth, $segments, $_GET);
+    $payload = route($service, $tinker, $workspaceRoot, $scanDepth, $segments, $_GET, $_SERVER['REQUEST_METHOD'] ?? 'GET', readJsonBody());
     respond(['success' => true, 'data' => $payload]);
 } catch (InvalidArgumentException $e) {
     respond(['success' => false, 'message' => $e->getMessage()], 404);
@@ -45,10 +46,37 @@ try {
 }
 
 /**
- * @param array<string, mixed> $query
+ * @return array<string, mixed>
  */
-function route(GitWorkspaceService $service, string $root, int $depth, array $segments, array $query): array
+function readJsonBody(): array
 {
+    $raw = file_get_contents('php://input');
+    if ($raw === false || trim($raw) === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        throw new InvalidArgumentException('Invalid JSON body.');
+    }
+
+    return $decoded;
+}
+
+/**
+ * @param array<string, mixed> $query
+ * @param array<string, mixed> $body
+ */
+function route(
+    GitWorkspaceService $service,
+    Kennofizet\RepoLocal\Services\LaravelTinkerRunner $tinker,
+    string $root,
+    int $depth,
+    array $segments,
+    array $query,
+    string $method,
+    array $body,
+): array {
     if ($segments === ['workspace']) {
         return $service->workspaceSummary($root, $depth);
     }
@@ -96,6 +124,16 @@ function route(GitWorkspaceService $service, string $root, int $depth, array $se
                 isset($query['path']) ? (string) $query['path'] : null,
                 isset($query['sha']) ? (string) $query['sha'] : null,
             );
+        }
+        if ($action === 'tinker' && ($segments[3] ?? '') === 'run' && strtoupper($method) === 'POST') {
+            $code = trim((string) ($body['code'] ?? ''));
+            if ($code === '') {
+                throw new InvalidArgumentException('Code is required.');
+            }
+            $userId = $body['user_id'] ?? null;
+            $userId = is_numeric($userId) ? (int) $userId : null;
+
+            return $tinker->run($root, $projectPath, $code, $userId);
         }
     }
 

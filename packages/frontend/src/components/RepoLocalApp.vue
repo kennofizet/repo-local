@@ -1,5 +1,5 @@
 <template>
-  <div class="repo-local" :class="{ loading: bootLoading }">
+  <div ref="appRootRef" class="repo-local" :class="{ loading: bootLoading }">
     <header class="rl-header">
       <div class="rl-brand">
         <span class="rl-logo" aria-hidden="true">
@@ -102,24 +102,33 @@
                 />
               </div>
             </aside>
-            <article class="rl-preview-panel">
-              <div v-if="!selectedFile" class="rl-center-empty inner">
-                <div class="empty-card small">
-                  <p>Select a file from the tree</p>
-                </div>
+            <div v-if="!selectedFile" class="rl-file-detail-empty rl-center-empty inner">
+              <div class="empty-card small">
+                <p>Select a file from the tree</p>
               </div>
-              <template v-else>
-                <div class="rl-preview-head">
-                  <code class="path">{{ selectedFile }}</code>
-                  <span v-if="fileMeta.size != null" class="meta">{{ formatBytes(fileMeta.size) }}</span>
-                </div>
-                <div class="rl-scroll preview-scroll">
-                  <div v-if="fileLoading" class="rl-muted">Loading…</div>
-                  <div v-else-if="fileMeta.binary" class="rl-placeholder">{{ fileMeta.message }}</div>
-                  <pre v-else class="rl-code"><code>{{ fileContent }}</code></pre>
-                </div>
+            </div>
+            <DetailFilePane
+              v-else
+              v-bind="tinkerPaneBind"
+              :file-path="selectedFile"
+              @toggle-tinker="toggleTinkerPanel"
+              @close-tinker="closeTinkerPanel"
+              @text-selected="onDetailTextSelected"
+              @update:resolve-code="onResolveCodeUpdate"
+              @update:query-draft="onQueryDraftUpdate"
+              @query-user-edit="onQueryUserEdit"
+              @update:inner-tab="onInnerTabUpdate"
+              @add-user="onAddTinkerUser"
+              @remove-user="onRemoveTinkerUser"
+              @set-default="onSetDefaultTinkerUser"
+            >
+              <template #head-actions>
+                <span v-if="fileMeta.size != null" class="meta">{{ formatBytes(fileMeta.size) }}</span>
               </template>
-            </article>
+              <div v-if="fileLoading" class="rl-muted">Loading…</div>
+              <div v-else-if="fileMeta.binary" class="rl-placeholder">{{ fileMeta.message }}</div>
+              <pre v-else class="rl-code"><code>{{ fileContent }}</code></pre>
+            </DetailFilePane>
           </div>
 
           <!-- COMMITS -->
@@ -174,10 +183,31 @@
                     </div>
                   </div>
                   <div class="rl-diff-wrap">
-                    <div v-if="commitError" class="rl-error">{{ commitError }}</div>
-                    <div class="rl-scroll">
-                      <DiffViewer v-if="commitPatch" :patch="commitPatch" />
+                    <div
+                      v-if="selectedCommit && !activeCommitFile && !commitPatch"
+                      class="rl-center-empty inner"
+                    >
+                      <div class="empty-card small"><p>Select a file from the list</p></div>
                     </div>
+                    <DetailFilePane
+                      v-else-if="selectedCommit && (activeCommitFile || commitPatch)"
+                      v-bind="tinkerPaneBind"
+                      :file-path="activeCommitFile || '(entire commit)'"
+                      @toggle-tinker="toggleTinkerPanel"
+                      @close-tinker="closeTinkerPanel"
+                      @text-selected="onDetailTextSelected"
+                      @update:resolve-code="onResolveCodeUpdate"
+                      @update:query-draft="onQueryDraftUpdate"
+                      @query-user-edit="onQueryUserEdit"
+                      @update:inner-tab="onInnerTabUpdate"
+                      @add-user="onAddTinkerUser"
+                      @remove-user="onRemoveTinkerUser"
+                      @set-default="onSetDefaultTinkerUser"
+                    >
+                      <div v-if="commitError" class="rl-error inline">{{ commitError }}</div>
+                      <DiffViewer v-if="commitPatch" :patch="commitPatch" />
+                      <div v-else class="rl-placeholder">Loading diff…</div>
+                    </DetailFilePane>
                   </div>
                 </div>
               </template>
@@ -204,7 +234,7 @@
                     :class="{ active: selectedChangePath === f.path }"
                   >
                     <button type="button" @click="viewChangeFile(f)">
-                      <span class="st">{{ f.worktree_status || f.index_status }}</span>
+                      <span class="st">{{ f.status || f.worktree_status || f.index_status }}</span>
                       <span class="path">{{ f.path }}</span>
                     </button>
                   </li>
@@ -215,21 +245,32 @@
               <div v-if="!selectedChangePath" class="rl-center-empty inner">
                 <div class="empty-card small"><p>Select a changed file</p></div>
               </div>
-              <template v-else>
-                <div class="rl-preview-head">
-                  <code class="path">{{ selectedChangePath }}</code>
+              <DetailFilePane
+                v-else
+                v-bind="tinkerPaneBind"
+                :file-path="selectedChangePath"
+                @toggle-tinker="toggleTinkerPanel"
+                @close-tinker="closeTinkerPanel"
+                @text-selected="onDetailTextSelected"
+                @update:resolve-code="onResolveCodeUpdate"
+                @update:query-draft="onQueryDraftUpdate"
+                @query-user-edit="onQueryUserEdit"
+                @update:inner-tab="onInnerTabUpdate"
+                @add-user="onAddTinkerUser"
+                @remove-user="onRemoveTinkerUser"
+                @set-default="onSetDefaultTinkerUser"
+              >
+                <template #head-extra>
                   <span
                     v-if="activeChangeMode"
                     class="rl-mode-badge"
                     :class="{ alt: activeChangeMode !== diffMode }"
                     :title="activeChangeMode !== diffMode ? `No ${diffMode} changes for this file — showing ${activeChangeMode}` : ''"
                   >{{ activeChangeMode === 'staged' ? 'Staged' : 'Work' }}</span>
-                </div>
-                <div class="rl-scroll">
-                  <DiffViewer v-if="changePatch" :patch="changePatch" />
-                  <div v-else class="rl-placeholder">No diff available for this file.</div>
-                </div>
-              </template>
+                </template>
+                <DiffViewer v-if="changePatch" :patch="changePatch" />
+                <div v-else class="rl-placeholder">No diff available for this file.</div>
+              </DetailFilePane>
             </div>
           </div>
         </div>
@@ -243,7 +284,11 @@ import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DiffViewer from './DiffViewer.vue'
 import FileTree from './FileTree.vue'
+import DetailFilePane from './DetailFilePane.vue'
+import { useAutoHideScrollbars } from '../composables/useAutoHideScrollbars.js'
+import { pickSupportModuleForProject } from '../support/registry.js'
 import { formatBytes, formatDate } from '../utils/format.js'
+import { sanitizeSelectionForCode } from '../utils/tinkerSelection.js'
 
 const TAB_ICONS = {
   code: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 3.5 2 8l3.5 4.5M10.5 12.5 14 8l-3.5-4.5"/></svg>',
@@ -253,12 +298,14 @@ const TAB_ICONS = {
 
 export default {
   name: 'RepoLocalApp',
-  components: { DiffViewer, FileTree },
+  components: { DiffViewer, FileTree, DetailFilePane },
   setup() {
     const api = inject('repoLocalApi')
     const route = useRoute()
     const router = useRouter()
     const fileTreeRef = ref(null)
+    const appRootRef = ref(null)
+    useAutoHideScrollbars(appRootRef)
 
     const bootLoading = ref(true)
     const bootError = ref('')
@@ -279,11 +326,53 @@ export default {
     const activeProjectId = ref('')
     const activeProject = ref(null)
     const tab = ref('code')
+    const supportModule = computed(() => pickSupportModuleForProject(activeProject.value))
+    const canOpenSupportPanel = computed(() => !!supportModule.value)
 
     const selectedFile = ref('')
     const fileContent = ref('')
     const fileMeta = ref({})
     const fileLoading = ref(false)
+    const selectionText = ref('')
+    const queryDirty = ref(false)
+
+    const detailKey = computed(() => {
+      if (tab.value === 'code') return selectedFile.value ? `code:${selectedFile.value}` : ''
+      if (tab.value === 'changes') return selectedChangePath.value ? `changes:${selectedChangePath.value}` : ''
+      if (tab.value === 'commits' && selectedCommit.value) {
+        const sha = selectedCommit.value.sha
+        return activeCommitFile.value
+          ? `commits:${sha}:${activeCommitFile.value}`
+          : `commits:${sha}:all`
+      }
+      return ''
+    })
+
+    const supportState = computed(() => supportModule.value?.useState?.(activeProjectId) || null)
+    const panelOpen = computed(() => (supportState.value?.state?.value?.panelOpen === true) && canOpenSupportPanel.value)
+
+    const tinkerPaneBind = computed(() => {
+      const st = supportState.value
+      const stateValue = st?.state?.value
+      return {
+        projectId: activeProjectId.value,
+        api,
+        selectionText: selectionText.value,
+        queryDirty: queryDirty.value,
+        detailKey: detailKey.value,
+        users: st?.users?.value || [],
+        defaultEntryId: stateValue?.defaultEntryId || null,
+        defaultUser: st?.defaultUser?.value || null,
+        resolveCode: stateValue?.resolveCode || '',
+        queryDraft: stateValue?.queryDraft || '',
+        innerTab: stateValue?.innerTab || 'query',
+        displayLabel: st?.displayLabel || (() => ''),
+        tinkerOpen: panelOpen.value,
+        showTinkerToggle: canOpenSupportPanel.value,
+        panelComponent: supportModule.value?.panelComponent || null,
+        toggleLabel: supportModule.value?.label || 'Support',
+      }
+    })
 
     const commits = ref([])
     const commitsLoading = ref(false)
@@ -344,6 +433,9 @@ export default {
       } catch {
         activeProject.value = p
       }
+      if (!canOpenSupportPanel.value) {
+        closeTinkerPanel()
+      }
       if (tab.value === 'commits') loadCommits()
       if (tab.value === 'changes') loadChanges()
     }
@@ -357,8 +449,77 @@ export default {
       if (id === 'changes') loadChanges()
     }
 
+    function resetTinkerForDetail() {
+      const st = supportState.value
+      queryDirty.value = false
+      selectionText.value = ''
+      if (st?.setQueryDraft) st.setQueryDraft('')
+      if (st?.setInnerTab) st.setInnerTab('query')
+    }
+
+    watch(detailKey, (next, prev) => {
+      if (!next || next === prev) return
+      resetTinkerForDetail()
+    })
+
+    function onDetailTextSelected(text) {
+      const cleaned = sanitizeSelectionForCode(text)
+      if (!cleaned) return
+      selectionText.value = cleaned
+      const st = supportState.value
+      if (canOpenSupportPanel.value && st?.setPanelOpen) st.setPanelOpen(true)
+    }
+
+    function toggleTinkerPanel() {
+      if (!canOpenSupportPanel.value) return
+      const st = supportState.value
+      if (!st?.setPanelOpen || !st?.state?.value) return
+      st.setPanelOpen(!st.state.value.panelOpen)
+    }
+
+    function closeTinkerPanel() {
+      const st = supportState.value
+      if (st?.setPanelOpen) st.setPanelOpen(false)
+      selectionText.value = ''
+    }
+
+    function onResolveCodeUpdate(v) {
+      const st = supportState.value
+      if (st?.setResolveCode) st.setResolveCode(v)
+    }
+
+    function onQueryDraftUpdate(v) {
+      const st = supportState.value
+      if (st?.setQueryDraft) st.setQueryDraft(v)
+    }
+
+    function onQueryUserEdit() {
+      queryDirty.value = true
+    }
+
+    function onInnerTabUpdate(v) {
+      const st = supportState.value
+      if (st?.setInnerTab) st.setInnerTab(v)
+    }
+
+    function onAddTinkerUser(payload) {
+      const st = supportState.value
+      if (st?.addUser) st.addUser(payload)
+    }
+
+    function onRemoveTinkerUser(id) {
+      const st = supportState.value
+      if (st?.removeUser) st.removeUser(id)
+    }
+
+    function onSetDefaultTinkerUser(id) {
+      const st = supportState.value
+      if (st?.setDefault) st.setDefault(id)
+    }
+
     async function openFile(path) {
       selectedFile.value = path
+      selectionText.value = ''
       fileLoading.value = true
       fileContent.value = ''
       try {
@@ -414,6 +575,7 @@ export default {
 
     async function viewCommitFile(f) {
       activeCommitFile.value = f.path
+      selectionText.value = ''
       try {
         const diff = await api.getDiff(activeProjectId.value, {
           mode: 'commit',
@@ -457,6 +619,7 @@ export default {
 
     async function viewChangeFile(f) {
       selectedChangePath.value = f.path
+      selectionText.value = ''
       const mode = resolveChangeMode(f)
       activeChangeMode.value = mode
       try {
@@ -512,11 +675,25 @@ export default {
       activeProject,
       tab,
       tabs,
+      api,
+      appRootRef,
       fileTreeRef,
+      tinkerPaneBind,
       selectedFile,
       fileContent,
       fileMeta,
       fileLoading,
+      selectionText,
+      onDetailTextSelected,
+      toggleTinkerPanel,
+      closeTinkerPanel,
+      onResolveCodeUpdate,
+      onQueryDraftUpdate,
+      onQueryUserEdit,
+      onInnerTabUpdate,
+      onAddTinkerUser,
+      onRemoveTinkerUser,
+      onSetDefaultTinkerUser,
       commits,
       commitsLoading,
       selectedCommit,
@@ -764,19 +941,67 @@ export default {
 .rl-scroll {
   flex: 1;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: auto;
   overscroll-behavior: contain;
 }
-.rl-scroll::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+
+/* Global scrollbars: hidden until hover, focus, or scrolling (.rl-scroll-visible) */
+.rl-scroll,
+.rl-scrollbar,
+:deep(.rl-detail-content),
+:deep(.rl-tinker-body),
+:deep(.rl-code-input) {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
-.rl-scroll::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.25);
+.rl-scroll:hover,
+.rl-scrollbar:hover,
+.rl-scroll.rl-scroll-visible,
+.rl-scrollbar.rl-scroll-visible,
+:deep(.rl-detail-content:hover),
+:deep(.rl-detail-content.rl-scroll-visible),
+:deep(.rl-tinker-body:hover),
+:deep(.rl-tinker-body.rl-scroll-visible),
+:deep(.rl-code-input:hover),
+:deep(.rl-code-input:focus),
+:deep(.rl-code-input.rl-scroll-visible) {
+  scrollbar-color: rgba(148, 163, 184, 0.32) transparent;
+}
+.rl-scroll::-webkit-scrollbar,
+.rl-scrollbar::-webkit-scrollbar,
+:deep(.rl-detail-content::-webkit-scrollbar),
+:deep(.rl-tinker-body::-webkit-scrollbar),
+:deep(.rl-code-input::-webkit-scrollbar) {
+  width: 6px;
+  height: 6px;
+}
+.rl-scroll::-webkit-scrollbar-thumb,
+.rl-scrollbar::-webkit-scrollbar-thumb,
+:deep(.rl-detail-content::-webkit-scrollbar-thumb),
+:deep(.rl-tinker-body::-webkit-scrollbar-thumb),
+:deep(.rl-code-input::-webkit-scrollbar-thumb) {
+  background: transparent;
   border-radius: 4px;
+  transition: background 0.15s ease;
 }
-.rl-scroll::-webkit-scrollbar-track {
+.rl-scroll:hover::-webkit-scrollbar-thumb,
+.rl-scrollbar:hover::-webkit-scrollbar-thumb,
+.rl-scroll.rl-scroll-visible::-webkit-scrollbar-thumb,
+.rl-scrollbar.rl-scroll-visible::-webkit-scrollbar-thumb,
+:deep(.rl-detail-content:hover::-webkit-scrollbar-thumb),
+:deep(.rl-detail-content.rl-scroll-visible::-webkit-scrollbar-thumb),
+:deep(.rl-tinker-body:hover::-webkit-scrollbar-thumb),
+:deep(.rl-tinker-body.rl-scroll-visible::-webkit-scrollbar-thumb),
+:deep(.rl-code-input:hover::-webkit-scrollbar-thumb),
+:deep(.rl-code-input:focus::-webkit-scrollbar-thumb),
+:deep(.rl-code-input.rl-scroll-visible::-webkit-scrollbar-thumb) {
+  background: rgba(148, 163, 184, 0.32);
+}
+.rl-scroll::-webkit-scrollbar-track,
+.rl-scrollbar::-webkit-scrollbar-track,
+:deep(.rl-detail-content::-webkit-scrollbar-track),
+:deep(.rl-tinker-body::-webkit-scrollbar-track),
+:deep(.rl-code-input::-webkit-scrollbar-track) {
   background: transparent;
 }
 
@@ -862,34 +1087,20 @@ export default {
   border-right: 1px solid var(--rl-border);
   background: var(--rl-bg-elevated);
 }
-.rl-preview-panel {
+.rl-code-layout > .rl-file-detail,
+.rl-code-layout > .rl-file-detail-empty {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+}
+.rl-file-detail-empty {
   background: var(--rl-surface);
 }
-.rl-preview-head {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--rl-border);
-  background: var(--rl-surface-2);
+.rl-detail-panel > .rl-file-detail {
+  flex: 1;
+  min-height: 0;
 }
-.rl-preview-head .path {
-  font-family: var(--rl-font-mono);
-  font-size: 12px;
-  color: var(--rl-accent);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rl-preview-head .meta {
-  flex-shrink: 0;
+.rl-file-detail-actions .meta {
   font-size: 11px;
   color: var(--rl-muted);
 }
@@ -910,17 +1121,19 @@ export default {
   color: #e0b341;
   border-color: rgba(210, 153, 34, 0.35);
 }
-.preview-scroll {
-  background: #0a0f14;
-}
 .rl-code {
   margin: 0;
-  padding: 16px;
+  padding: 0;
   font-family: var(--rl-font-mono);
   font-size: 12px;
   line-height: 1.55;
   color: #c9d7e8;
   tab-size: 2;
+}
+.rl-error.inline {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  font-size: 12px;
 }
 
 .rl-split-layout {
@@ -980,9 +1193,11 @@ export default {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
-.rl-diff-wrap .rl-scroll {
-  padding: 12px;
+.rl-diff-wrap > .rl-file-detail {
+  flex: 1;
+  min-height: 0;
 }
 
 .rl-commit-list {

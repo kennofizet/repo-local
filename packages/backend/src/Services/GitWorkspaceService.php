@@ -42,6 +42,7 @@ final class GitWorkspaceService
     {
         $repoPath = PathGuard::resolveInside($workspaceRoot, $projectPath);
         $isGit = $this->git->isGitRepository($repoPath);
+        $supports = $this->detectSupports($repoPath);
 
         return [
             'id' => $this->encodeProjectId($projectPath),
@@ -49,7 +50,25 @@ final class GitWorkspaceService
             'path' => PathGuard::relativePath($workspaceRoot, $repoPath),
             'branch' => $isGit ? $this->currentBranch($repoPath) : null,
             'is_git' => $isGit,
+            'supports' => $supports,
         ];
+    }
+
+    private function detectSupports(string $projectRoot): array
+    {
+        /** @var list<array{id: string, label: string, runner?: string}> $supports */
+        $supports = [];
+
+        // Laravel (tinker-style PHP runner)
+        if (is_file($projectRoot . DIRECTORY_SEPARATOR . 'artisan')) {
+            $supports[] = [
+                'id' => 'laravel.tinker',
+                'label' => 'Laravel · Tinker',
+                'runner' => 'php',
+            ];
+        }
+
+        return $supports;
     }
 
     public function listTree(string $workspaceRoot, string $projectPath, string $relativePath = ''): array
@@ -245,6 +264,8 @@ final class GitWorkspaceService
                 'staged' => $indexStatus !== ' ' && $indexStatus !== '?',
                 'unstaged' => $worktreeStatus !== ' ' && $worktreeStatus !== '?',
                 'untracked' => $indexStatus === '?' && $worktreeStatus === '?',
+                // Convenience status for UI (git porcelain uses '??' for untracked).
+                'status' => $indexStatus === '?' && $worktreeStatus === '?' ? 'U' : ($worktreeStatus === ' ' ? ($indexStatus === ' ' ? null : $indexStatus) : $worktreeStatus),
             ];
         }
 
@@ -282,6 +303,19 @@ final class GitWorkspaceService
         }
 
         if ($path !== null && $path !== '') {
+            $path = str_replace('\\', '/', $path);
+
+            // Untracked files are not included in `git diff`. Provide a synthetic patch so the UI can show the content.
+            if ($mode !== 'commit' && $mode !== 'staged' && $this->isUntrackedPath($repoPath, $path)) {
+                return [
+                    'mode' => $mode,
+                    'path' => $path,
+                    'sha' => $sha,
+                    'patch' => $this->buildAddedFilePatch($repoPath, $path),
+                    'stats' => $this->parseDiffStats($this->buildAddedFilePatch($repoPath, $path)),
+                ];
+            }
+
             $args[] = '--';
             $args[] = $path;
         }
@@ -295,6 +329,56 @@ final class GitWorkspaceService
             'patch' => $patch,
             'stats' => $this->parseDiffStats($patch),
         ];
+    }
+
+    private function isUntrackedPath(string $repoPath, string $path): bool
+    {
+        $porcelain = rtrim($this->git->tryRun($repoPath, ['status', '--porcelain', '-u']) ?? '', "\r\n");
+        foreach (array_filter(explode("\n", $porcelain), static fn (string $l) => $l !== '') as $line) {
+            $line = rtrim($line, "\r");
+            if (!str_starts_with($line, '?? ')) {
+                continue;
+            }
+            $p = substr($line, 3);
+            if ($p === $path) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function buildAddedFilePatch(string $repoPath, string $path): string
+    {
+        $absolute = PathGuard::resolveInside($repoPath, $path);
+        if (!is_file($absolute)) {
+            throw new InvalidArgumentException('File not found.');
+        }
+
+        $content = file_get_contents($absolute);
+        if ($content === false) {
+            throw new RuntimeException('Failed to read file.');
+        }
+
+        $content = str_replace("\r\n", "\n", $content);
+        $lines = $content === '' ? [] : explode("\n", rtrim($content, "\n"));
+        $count = count($lines);
+
+        $patch = [];
+        $patch[] = 'diff --git a/' . $path . ' b/' . $path;
+        $patch[] = 'new file mode 100644';
+        $patch[] = '--- /dev/null';
+        $patch[] = '+++ b/' . $path;
+        $patch[] = '@@ -0,0 +1,' . max(1, $count) . ' @@';
+        if ($count === 0) {
+            $patch[] = '+';
+        } else {
+            foreach ($lines as $line) {
+                $patch[] = '+' . $line;
+            }
+        }
+
+        return implode("\n", $patch) . "\n";
     }
 
     public function decodeProjectId(string $id): string

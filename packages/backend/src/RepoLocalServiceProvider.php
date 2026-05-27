@@ -4,6 +4,7 @@ namespace Kennofizet\RepoLocal;
 
 use Kennofizet\RepoLocal\Services\GitCommandRunner;
 use Kennofizet\RepoLocal\Services\GitWorkspaceService;
+use Kennofizet\RepoLocal\Services\LaravelTinkerRunner;
 use Illuminate\Support\ServiceProvider;
 
 class RepoLocalServiceProvider extends ServiceProvider
@@ -13,6 +14,7 @@ class RepoLocalServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__ . '/Config/repo-local.php', 'repo-local');
         $this->app->singleton(GitCommandRunner::class);
         $this->app->singleton(GitWorkspaceService::class);
+        $this->app->singleton(LaravelTinkerRunner::class);
     }
 
     public function boot(): void
